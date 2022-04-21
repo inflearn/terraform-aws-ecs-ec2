@@ -56,7 +56,7 @@ EOF
 
 resource "aws_autoscaling_group" "this" {
   name                 = var.name
-  vpc_zone_identifier  = var.subnet_ids
+  vpc_zone_identifier  = var.subnets
   min_size             = var.min_size
   max_size             = var.max_size
   launch_configuration = aws_launch_configuration.this.name
@@ -198,10 +198,10 @@ resource "aws_ecs_service" "this" {
   name                               = each.value.name
   cluster                            = aws_ecs_cluster.this.id
   task_definition                    = aws_ecs_task_definition.this[each.value.name].arn
-  deployment_minimum_healthy_percent = lookup(each.value, "deployment_minimum_healthy_percent", 100)
-  deployment_maximum_percent         = lookup(each.value, "deployment_maximum_percent", 200)
+  deployment_minimum_healthy_percent = lookup(each.value, "deployment_minimum_healthy_percent", null)
+  deployment_maximum_percent         = lookup(each.value, "deployment_maximum_percent", null)
   scheduling_strategy                = lookup(each.value, "scheduling_strategy", "REPLICA")
-  health_check_grace_period_seconds  = lookup(each.value, "health_check_grace_period_seconds", 30)
+  health_check_grace_period_seconds  = lookup(each.value, "health_check_grace_period_seconds", null)
   iam_role                           = data.aws_iam_role.service.arn
   wait_for_steady_state              = lookup(each.value, "wait_for_steady_state", true)
   tags                               = var.tags

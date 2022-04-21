@@ -89,7 +89,7 @@ module "ecs" {
   source                      = "../../"
   name                        = "example-inflab-ecs-ec2"
   vpc_id                      = module.vpc.vpc_id
-  subnet_ids                  = module.vpc.public_subnets
+  subnets                     = module.vpc.public_subnets
   region                      = "ap-northeast-2"
   ami                         = "ami-0ddef7b72b2854433"
   instance_type               = "t3a.micro"
