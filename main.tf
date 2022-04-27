@@ -111,10 +111,6 @@ data "aws_iam_role" "task_execution" {
   name = "ecsTaskExecutionRole"
 }
 
-data "aws_iam_policy" "task_execution" {
-  name = "AmazonECSTaskExecutionRolePolicy"
-}
-
 data "aws_iam_role" "service" {
   name = "ecsServiceRole"
 }
