@@ -198,7 +198,7 @@ resource "aws_ecs_service" "this" {
   deployment_maximum_percent         = lookup(each.value, "deployment_maximum_percent", null)
   scheduling_strategy                = lookup(each.value, "scheduling_strategy", "REPLICA")
   health_check_grace_period_seconds  = lookup(each.value, "health_check_grace_period_seconds", null)
-  iam_role                           = data.aws_iam_role.service.arn
+  iam_role                           = lookup(each.value, "load_balancers", []) != [] ? data.aws_iam_role.service.arn : null
   wait_for_steady_state              = lookup(each.value, "wait_for_steady_state", true)
   tags                               = var.tags
 
