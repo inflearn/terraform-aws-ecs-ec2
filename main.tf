@@ -132,6 +132,7 @@ resource "aws_ecs_task_definition" "this" {
   for_each           = {for s in var.services : s.name => s}
   family             = "${var.name}-${each.value.name}"
   execution_role_arn = data.aws_iam_role.task_execution.arn
+  task_role_arn      = var.task_role_arn
   network_mode       = lookup(each.value, "network_mode", "bridge")
   tags               = var.tags
 

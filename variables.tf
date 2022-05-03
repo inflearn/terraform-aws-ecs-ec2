@@ -62,6 +62,11 @@ variable "create_ecs_service" {
   default = true
 }
 
+variable "task_role_arn" {
+  type    = string
+  default = null
+}
+
 variable "services" {
   type    = any
   default = []
