@@ -118,7 +118,7 @@ data "aws_iam_role" "service" {
 resource "aws_cloudwatch_log_group" "this" {
   for_each = merge([
   for s in var.services : {
-  for c in s.container_definitions : try(s.name, "") == "" ? "${var.name}/${c.name}" : "${var.name}/${s.name}/${c.name}" => {
+  for c in s.container_definitions : "${var.name}${try(s.name, null) == null ? "" : "/${s.name}"}${try(c.name, null) == null ? "" : "/${c.name}"}" => {
     log_retention_days = try(c.log_retention_days, 7)
   }
   }
@@ -129,8 +129,8 @@ resource "aws_cloudwatch_log_group" "this" {
 }
 
 resource "aws_ecs_task_definition" "this" {
-  for_each           = {for s in var.services : try(s.name, "") => s}
-  family             = each.key == "" ? var.name : "${var.name}-${each.key}"
+  for_each           = {for i, s in var.services : i => s}
+  family             = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}"
   execution_role_arn = data.aws_iam_role.task_execution.arn
   task_role_arn      = var.task_role_arn
   network_mode       = try(each.value.network_mode, "bridge")
@@ -167,7 +167,7 @@ resource "aws_ecs_task_definition" "this" {
 
   container_definitions = jsonencode([
   for c in each.value.container_definitions : {
-    name              = c.name
+    name              = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}${try(c.name, null) == null ? "" : "-${c.name}"}"
     image             = c.image
     essential         = try(c.essential, true)
     portMappings      = try(c.portMappings, null)
@@ -181,7 +181,7 @@ resource "aws_ecs_task_definition" "this" {
       "logDriver" : "awslogs",
       "options" : {
         "awslogs-region" : var.region,
-        "awslogs-group" : aws_cloudwatch_log_group.this[each.key == "" ? "${var.name}/${c.name}" : "${var.name}/${each.key}/${c.name}"].name,
+        "awslogs-group" : aws_cloudwatch_log_group.this["${var.name}${try(each.value.name, null) == null ? "" : "/${each.value.name}"}${try(c.name, null) == null ? "" : "/${c.name}"}"].name,
         "awslogs-stream-prefix" : "ecs"
       }
     }
@@ -191,8 +191,8 @@ resource "aws_ecs_task_definition" "this" {
 
 resource "aws_ecs_service" "this" {
   depends_on                         = [aws_ecs_cluster_capacity_providers.this]
-  for_each                           = {for s in var.services : try(s.name, "") => s if var.create_ecs_service}
-  name                               = each.key == "" ? var.name : "${var.name}-${each.key}"
+  for_each                           = {for i, s in var.services : i => s if var.create_ecs_service}
+  name                               = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}"
   cluster                            = aws_ecs_cluster.this.id
   task_definition                    = aws_ecs_task_definition.this[each.key].arn
   deployment_minimum_healthy_percent = try(each.value.deployment_minimum_healthy_percent, null)
@@ -229,17 +229,17 @@ resource "aws_ecs_service" "this" {
 
 resource "aws_appautoscaling_target" "this" {
   depends_on         = [aws_ecs_service.this]
-  for_each           = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true)}
+  for_each           = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true)}
   min_capacity       = try(each.value.min_capacity, 1)
   max_capacity       = coalesce(try(each.value.max_capacity, null), try(each.value.min_capacity, 1))
-  resource_id        = each.key == "" ? "service/${var.name}" : "service/${var.name}/${each.key}"
+  resource_id        = "service/${var.name}${try(each.value.name, null) == null ? "" : "/${each.value.name}"}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
 
 resource "aws_appautoscaling_policy" "scale_out" {
-  for_each           = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
-  name               = each.key == "" ? "${var.name}-scale-out" : "${var.name}-${each.key}-scale-out"
+  for_each           = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
+  name               = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}-scale-out"
   resource_id        = aws_appautoscaling_target.this[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.this[each.key].scalable_dimension
   service_namespace  = aws_appautoscaling_target.this[each.key].service_namespace
@@ -257,8 +257,8 @@ resource "aws_appautoscaling_policy" "scale_out" {
 }
 
 resource "aws_appautoscaling_policy" "scale_in" {
-  for_each           = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
-  name               = each.key == "" ? "${var.name}-scale-in" : "${var.name}-${each.key}-scale-in"
+  for_each           = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
+  name               = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}-scale-in"
   resource_id        = aws_appautoscaling_target.this[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.this[each.key].scalable_dimension
   service_namespace  = aws_appautoscaling_target.this[each.key].service_namespace
@@ -276,8 +276,8 @@ resource "aws_appautoscaling_policy" "scale_in" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
-  for_each            = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
-  alarm_name          = each.key == "" ? "${var.name}-cpu-high" : "${var.name}-${each.key}-cpu-high"
+  for_each            = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
+  alarm_name          = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}-cpu-high"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/ECS"
@@ -295,8 +295,8 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_low" {
-  for_each            = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
-  alarm_name          = each.key == "" ? "${var.name}-cpu-low" : "${var.name}-${each.key}-cpu-low"
+  for_each            = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
+  alarm_name          = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}-cpu-low"
   comparison_operator = "LessThanOrEqualToThreshold"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/ECS"
