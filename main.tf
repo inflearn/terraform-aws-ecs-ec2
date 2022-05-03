@@ -118,8 +118,8 @@ data "aws_iam_role" "service" {
 resource "aws_cloudwatch_log_group" "this" {
   for_each = merge([
   for s in var.services : {
-  for c in s.container_definitions : "${var.name}/${s.name}/${c.name}" => {
-    log_retention_days = lookup(c, "log_retention_days", 7)
+  for c in s.container_definitions : try(s.name, "") == "" ? "${var.name}/${c.name}" : "${var.name}/${s.name}/${c.name}" => {
+    log_retention_days = try(c.log_retention_days, 7)
   }
   }
   ]...)
@@ -129,35 +129,35 @@ resource "aws_cloudwatch_log_group" "this" {
 }
 
 resource "aws_ecs_task_definition" "this" {
-  for_each           = {for s in var.services : s.name => s}
-  family             = "${var.name}-${each.value.name}"
+  for_each           = {for s in var.services : try(s.name, "") => s}
+  family             = each.key == "" ? var.name : "${var.name}-${each.key}"
   execution_role_arn = data.aws_iam_role.task_execution.arn
   task_role_arn      = var.task_role_arn
-  network_mode       = lookup(each.value, "network_mode", "bridge")
+  network_mode       = try(each.value.network_mode, "bridge")
   tags               = var.tags
 
   dynamic "volume" {
-    for_each = lookup(each.value, "volumes", [])
+    for_each = try(each.value.volumes, [])
 
     content {
       name      = volume.value.name
-      host_path = lookup(volume.value, "host_path", null)
+      host_path = try(volume.value.host_path, null)
 
       dynamic "efs_volume_configuration" {
-        for_each = lookup(volume.value, "efs_volume_configuration", [])
+        for_each = try(volume.value.efs_volume_configuration, [])
 
         content {
           file_system_id          = efs_volume_configuration.value.file_system_id
-          root_directory          = lookup(efs_volume_configuration.value, "root_directory", null)
-          transit_encryption      = lookup(efs_volume_configuration.value, "transit_encryption", null)
-          transit_encryption_port = lookup(efs_volume_configuration.value, "transit_encryption_port", null)
+          root_directory          = try(efs_volume_configuration.value.root_directory, null)
+          transit_encryption      = try(efs_volume_configuration.value.transit_encryption, null)
+          transit_encryption_port = try(efs_volume_configuration.value.transit_encryption_port, null)
 
           dynamic "authorization_config" {
-            for_each = lookup(efs_volume_configuration.value, "authorization_config", [])
+            for_each = try(efs_volume_configuration.value.authorization_config, [])
 
             content {
-              iam             = lookup(authorization_config.value, "iam_auth", null)
-              access_point_id = lookup(authorization_config.value, "access_point_id", null)
+              iam             = try(authorization_config.value.iam_auth, null)
+              access_point_id = try(authorization_config.value.access_point_id, null)
             }
           }
         }
@@ -169,19 +169,19 @@ resource "aws_ecs_task_definition" "this" {
   for c in each.value.container_definitions : {
     name              = c.name
     image             = c.image
-    essential         = lookup(c, "essential", true)
-    portMappings      = lookup(c, "portMappings", null)
-    healthCheck       = lookup(c, "healthCheck", null)
-    linuxParameters   = lookup(c, "linuxParameters", null)
+    essential         = try(c.essential, true)
+    portMappings      = try(c.portMappings, null)
+    healthCheck       = try(c.healthCheck, null)
+    linuxParameters   = try(c.linuxParameters, null)
     cpu               = c.cpu
     memoryReservation = c.memoryReservation
-    environment       = lookup(c, "environment", null)
-    mountPoints       = lookup(c, "mountPoints", null)
+    environment       = try(c.environment, null)
+    mountPoints       = try(c.mountPoints, null)
     logConfiguration : {
       "logDriver" : "awslogs",
       "options" : {
         "awslogs-region" : var.region,
-        "awslogs-group" : aws_cloudwatch_log_group.this["${var.name}/${each.value.name}/${c.name}"].name,
+        "awslogs-group" : aws_cloudwatch_log_group.this[each.key == "" ? "${var.name}/${c.name}" : "${var.name}/${each.key}/${c.name}"].name,
         "awslogs-stream-prefix" : "ecs"
       }
     }
@@ -191,16 +191,16 @@ resource "aws_ecs_task_definition" "this" {
 
 resource "aws_ecs_service" "this" {
   depends_on                         = [aws_ecs_cluster_capacity_providers.this]
-  for_each                           = {for s in var.services : s.name => s if var.create_ecs_service}
-  name                               = each.value.name
+  for_each                           = {for s in var.services : try(s.name, "") => s if var.create_ecs_service}
+  name                               = each.key == "" ? var.name : "${var.name}-${each.key}"
   cluster                            = aws_ecs_cluster.this.id
-  task_definition                    = aws_ecs_task_definition.this[each.value.name].arn
-  deployment_minimum_healthy_percent = lookup(each.value, "deployment_minimum_healthy_percent", null)
-  deployment_maximum_percent         = lookup(each.value, "deployment_maximum_percent", null)
-  scheduling_strategy                = lookup(each.value, "scheduling_strategy", "REPLICA")
-  health_check_grace_period_seconds  = lookup(each.value, "health_check_grace_period_seconds", null)
-  iam_role                           = lookup(each.value, "load_balancers", []) != [] ? data.aws_iam_role.service.arn : null
-  wait_for_steady_state              = lookup(each.value, "wait_for_steady_state", true)
+  task_definition                    = aws_ecs_task_definition.this[each.key].arn
+  deployment_minimum_healthy_percent = try(each.value.deployment_minimum_healthy_percent, null)
+  deployment_maximum_percent         = try(each.value.deployment_maximum_percent, null)
+  scheduling_strategy                = try(each.value.scheduling_strategy, "REPLICA")
+  health_check_grace_period_seconds  = try(each.value.health_check_grace_period_seconds, null)
+  iam_role                           = try(each.value.load_balancers, []) != [] ? data.aws_iam_role.service.arn : null
+  wait_for_steady_state              = try(each.value.wait_for_steady_state, true)
   tags                               = var.tags
 
   lifecycle {
@@ -208,7 +208,7 @@ resource "aws_ecs_service" "this" {
   }
 
   dynamic "ordered_placement_strategy" {
-    for_each = lookup(each.value, "ordered_placement_strategies", [])
+    for_each = try(each.value.ordered_placement_strategies, [])
 
     content {
       field = ordered_placement_strategy.value.field
@@ -217,7 +217,7 @@ resource "aws_ecs_service" "this" {
   }
 
   dynamic "load_balancer" {
-    for_each = lookup(each.value, "load_balancers", [])
+    for_each = try(each.value.load_balancers, [])
 
     content {
       target_group_arn = load_balancer.value.target_group_arn
@@ -229,17 +229,17 @@ resource "aws_ecs_service" "this" {
 
 resource "aws_appautoscaling_target" "this" {
   depends_on         = [aws_ecs_service.this]
-  for_each           = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true)}
-  min_capacity       = lookup(each.value, "min_capacity", 1)
-  max_capacity       = coalesce(lookup(each.value, "max_capacity", null), lookup(each.value, "min_capacity", 1))
-  resource_id        = "service/${var.name}/${each.value.name}"
+  for_each           = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true)}
+  min_capacity       = try(each.value.min_capacity, 1)
+  max_capacity       = coalesce(try(each.value.max_capacity, null), try(each.value.min_capacity, 1))
+  resource_id        = each.key == "" ? "service/${var.name}" : "service/${var.name}/${each.key}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
 
 resource "aws_appautoscaling_policy" "scale_out" {
-  for_each           = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
-  name               = "${var.name}-${each.value.name}-scale-out"
+  for_each           = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
+  name               = each.key == "" ? "${var.name}-scale-out" : "${var.name}-${each.key}-scale-out"
   resource_id        = aws_appautoscaling_target.this[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.this[each.key].scalable_dimension
   service_namespace  = aws_appautoscaling_target.this[each.key].service_namespace
@@ -257,8 +257,8 @@ resource "aws_appautoscaling_policy" "scale_out" {
 }
 
 resource "aws_appautoscaling_policy" "scale_in" {
-  for_each           = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
-  name               = "${var.name}-${each.value.name}-scale-in"
+  for_each           = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
+  name               = each.key == "" ? "${var.name}-scale-in" : "${var.name}-${each.key}-scale-in"
   resource_id        = aws_appautoscaling_target.this[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.this[each.key].scalable_dimension
   service_namespace  = aws_appautoscaling_target.this[each.key].service_namespace
@@ -276,15 +276,15 @@ resource "aws_appautoscaling_policy" "scale_in" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
-  for_each            = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
-  alarm_name          = "${var.name}-${each.value.name}-cpu-high"
+  for_each            = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
+  alarm_name          = each.key == "" ? "${var.name}-cpu-high" : "${var.name}-${each.key}-cpu-high"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/ECS"
   statistic           = "Maximum"
-  threshold           = lookup(each.value, "max_cpu_threshold", 40)
-  period              = lookup(each.value, "max_cpu_period", 60)
-  evaluation_periods  = lookup(each.value, "max_cpu_evaluation_periods", 1)
+  threshold           = try(each.value.max_cpu_threshold, 40)
+  period              = try(each.value.max_cpu_period, 60)
+  evaluation_periods  = try(each.value.max_cpu_evaluation_periods, 1)
   alarm_actions       = [aws_appautoscaling_policy.scale_out[each.key].arn]
   tags                = var.tags
 
@@ -295,15 +295,15 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_low" {
-  for_each            = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
-  alarm_name          = "${var.name}-${each.value.name}-cpu-low"
+  for_each            = {for s in var.services : try(s.name, "") => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
+  alarm_name          = each.key == "" ? "${var.name}-cpu-low" : "${var.name}-${each.key}-cpu-low"
   comparison_operator = "LessThanOrEqualToThreshold"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/ECS"
   statistic           = "Average"
-  threshold           = lookup(each.value, "min_cpu_threshold", 10)
-  period              = lookup(each.value, "min_cpu_period", 60)
-  evaluation_periods  = lookup(each.value, "min_cpu_evaluation_periods", 3)
+  threshold           = try(each.value.min_cpu_threshold, 10)
+  period              = try(each.value.min_cpu_period, 60)
+  evaluation_periods  = try(each.value.min_cpu_evaluation_periods, 3)
   alarm_actions       = [aws_appautoscaling_policy.scale_in[each.key].arn]
   tags                = var.tags
 
