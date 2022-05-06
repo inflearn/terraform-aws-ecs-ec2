@@ -11,9 +11,9 @@ output "cluster_name" {
 }
 
 output "task_definitions" {
-  value = {for k, v in aws_ecs_task_definition.this : k => v.arn}
+  value = [for k, v in aws_ecs_task_definition.this : v.arn]
 }
 
 output "services" {
-  value = {for k, v in aws_ecs_service.this : k => v.id}
+  value = [for k, v in aws_ecs_service.this : v.id]
 }
