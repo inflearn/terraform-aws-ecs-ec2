@@ -90,11 +90,11 @@ module "ecs" {
   name                        = "example-inflab-ecs-ec2"
   vpc_id                      = module.vpc.vpc_id
   subnets                     = module.vpc.public_subnets
+  security_groups             = [module.security_group_ecs.security_group_id]
   region                      = "ap-northeast-2"
   ami                         = "ami-0ddef7b72b2854433"
   instance_type               = "t3a.micro"
   public_key                  = ""
-  security_groups             = [module.security_group_ecs.security_group_id]
   min_size                    = 1
   max_size                    = 1
   target_capacity             = 90
@@ -169,7 +169,84 @@ module "ecs" {
               readOnly      = false
             }
           ]
+        }
+      ]
+    }
+  ]
 
+  tags = {
+    iac  = "terraform"
+    temp = "true"
+  }
+}
+
+module "ecs_without_service" {
+  source                      = "../../"
+  name                        = "example-inflab-ecs-ec2-without-service"
+  vpc_id                      = module.vpc.vpc_id
+  subnets                     = module.vpc.public_subnets
+  security_groups             = [module.security_group_ecs.security_group_id]
+  region                      = "ap-northeast-2"
+  ami                         = "ami-0ddef7b72b2854433"
+  instance_type               = "t3a.micro"
+  public_key                  = ""
+  min_size                    = 1
+  max_size                    = 1
+  target_capacity             = 90
+  associate_public_ip_address = true
+  enable_container_insights   = true
+  create_ecs_service          = false
+
+  services = [
+    {
+      name         = "example-service"
+      network_mode = "bridge"
+      volumes      = [
+        {
+          name      = "example-volume"
+          host_path = "/tmp/example-volume"
+        }
+      ]
+      container_definitions = [
+        {
+          name               = "example-container"
+          log_retention_days = 731
+          image              = "nginx:latest"
+          essential          = true
+          portMappings       = [
+            {
+              containerPort = 80
+              hostPort      = 0
+              protocol      = "tcp"
+            }
+          ]
+          healthCheck = {
+            command  = ["CMD-SHELL", "curl -f -LI http://localhost/"]
+            interval = 30
+            timeout  = 5
+            retries  = 3
+          }
+          linuxParameters = {
+            capabilities = {
+              add  = []
+              drop = []
+            }
+          }
+          cpu               = 2048
+          memoryReservation = 900
+          environment       = [
+            {
+              name  = "TEST_ENV"
+              value = "test"
+            }
+          ]
+          mountPoints = [
+            {
+              sourceVolume  = "example-volume"
+              containerPath = "/example-volume"
+              readOnly      = false
+            }
+          ]
         }
       ]
     }

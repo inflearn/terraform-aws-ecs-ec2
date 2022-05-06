@@ -57,6 +57,11 @@ variable "enable_container_insights" {
   default = true
 }
 
+variable "create_ecs_service" {
+  type    = bool
+  default = true
+}
+
 variable "services" {
   type    = any
   default = []

@@ -122,7 +122,7 @@ data "aws_iam_role" "service" {
 resource "aws_cloudwatch_log_group" "this" {
   for_each = merge([
   for s in var.services : {
-  for c in s.container_definitions : "${s.name}/${c.name}" => {
+  for c in s.container_definitions : "${var.name}/${s.name}/${c.name}" => {
     log_retention_days = lookup(c, "log_retention_days", 7)
   }
   }
@@ -184,7 +184,7 @@ resource "aws_ecs_task_definition" "this" {
       "logDriver" : "awslogs",
       "options" : {
         "awslogs-region" : var.region,
-        "awslogs-group" : aws_cloudwatch_log_group.this["${each.value.name}/${c.name}"].name,
+        "awslogs-group" : aws_cloudwatch_log_group.this["${var.name}/${each.value.name}/${c.name}"].name,
         "awslogs-stream-prefix" : "ecs"
       }
     }
@@ -194,7 +194,7 @@ resource "aws_ecs_task_definition" "this" {
 
 resource "aws_ecs_service" "this" {
   depends_on                         = [aws_ecs_cluster_capacity_providers.this]
-  for_each                           = {for s in var.services : s.name => s}
+  for_each                           = {for s in var.services : s.name => s if var.create_ecs_service}
   name                               = each.value.name
   cluster                            = aws_ecs_cluster.this.id
   task_definition                    = aws_ecs_task_definition.this[each.value.name].arn
@@ -232,7 +232,7 @@ resource "aws_ecs_service" "this" {
 
 resource "aws_appautoscaling_target" "this" {
   depends_on         = [aws_ecs_service.this]
-  for_each           = {for s in var.services : s.name => s if lookup(s, "enable_autoscaling", true)}
+  for_each           = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true)}
   min_capacity       = lookup(each.value, "min_capacity", 1)
   max_capacity       = coalesce(lookup(each.value, "max_capacity", null), lookup(each.value, "min_capacity", 1))
   resource_id        = "service/${var.name}/${each.value.name}"
@@ -241,7 +241,7 @@ resource "aws_appautoscaling_target" "this" {
 }
 
 resource "aws_appautoscaling_policy" "scale_out" {
-  for_each           = {for s in var.services : s.name => s if lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
+  for_each           = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
   name               = "${var.name}-${each.value.name}-scale-out"
   resource_id        = aws_appautoscaling_target.this[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.this[each.key].scalable_dimension
@@ -260,7 +260,7 @@ resource "aws_appautoscaling_policy" "scale_out" {
 }
 
 resource "aws_appautoscaling_policy" "scale_in" {
-  for_each           = {for s in var.services : s.name => s if lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
+  for_each           = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
   name               = "${var.name}-${each.value.name}-scale-in"
   resource_id        = aws_appautoscaling_target.this[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.this[each.key].scalable_dimension
@@ -279,7 +279,7 @@ resource "aws_appautoscaling_policy" "scale_in" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
-  for_each            = {for s in var.services : s.name => s if lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
+  for_each            = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
   alarm_name          = "${var.name}-${each.value.name}-cpu-high"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   metric_name         = "CPUUtilization"
@@ -298,7 +298,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_low" {
-  for_each            = {for s in var.services : s.name => s if lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
+  for_each            = {for s in var.services : s.name => s if var.create_ecs_service && lookup(s, "enable_autoscaling", true) && lookup(s, "scale_cooldown", null) != null}
   alarm_name          = "${var.name}-${each.value.name}-cpu-low"
   comparison_operator = "LessThanOrEqualToThreshold"
   metric_name         = "CPUUtilization"
