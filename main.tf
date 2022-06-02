@@ -130,7 +130,7 @@ resource "aws_cloudwatch_log_group" "this" {
 
 resource "aws_ecs_task_definition" "this" {
   for_each           = {for i, s in var.services : i => s}
-  family             = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}"
+  family             = each.value.name
   execution_role_arn = data.aws_iam_role.task_execution.arn
   task_role_arn      = var.task_role_arn
   network_mode       = try(each.value.network_mode, "bridge")
@@ -167,7 +167,7 @@ resource "aws_ecs_task_definition" "this" {
 
   container_definitions = jsonencode([
   for c in each.value.container_definitions : {
-    name              = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}${try(c.name, null) == null ? "" : "-${c.name}"}"
+    name              = c.name
     image             = c.image
     essential         = try(c.essential, true)
     portMappings      = try(c.portMappings, null)
@@ -192,7 +192,7 @@ resource "aws_ecs_task_definition" "this" {
 resource "aws_ecs_service" "this" {
   depends_on                         = [aws_ecs_cluster_capacity_providers.this]
   for_each                           = {for i, s in var.services : i => s if var.create_ecs_service}
-  name                               = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}"
+  name                               = each.value.name
   cluster                            = aws_ecs_cluster.this.id
   task_definition                    = aws_ecs_task_definition.this[each.key].arn
   deployment_minimum_healthy_percent = try(each.value.deployment_minimum_healthy_percent, null)
@@ -239,7 +239,7 @@ resource "aws_appautoscaling_target" "this" {
 
 resource "aws_appautoscaling_policy" "scale_out" {
   for_each           = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
-  name               = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}-scale-out"
+  name               = "${var.name}-scale-out"
   resource_id        = aws_appautoscaling_target.this[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.this[each.key].scalable_dimension
   service_namespace  = aws_appautoscaling_target.this[each.key].service_namespace
@@ -258,7 +258,7 @@ resource "aws_appautoscaling_policy" "scale_out" {
 
 resource "aws_appautoscaling_policy" "scale_in" {
   for_each           = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
-  name               = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}-scale-in"
+  name               = "${var.name}-scale-in"
   resource_id        = aws_appautoscaling_target.this[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.this[each.key].scalable_dimension
   service_namespace  = aws_appautoscaling_target.this[each.key].service_namespace
@@ -277,7 +277,7 @@ resource "aws_appautoscaling_policy" "scale_in" {
 
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   for_each            = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
-  alarm_name          = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}-cpu-high"
+  alarm_name          = "${var.name}-cpu-high"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/ECS"
@@ -296,7 +296,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 
 resource "aws_cloudwatch_metric_alarm" "cpu_low" {
   for_each            = {for i, s in var.services : i => s if var.create_ecs_service && try(s.enable_autoscaling, true) && try(s.scale_cooldown, null) != null}
-  alarm_name          = "${var.name}${try(each.value.name, null) == null ? "" : "-${each.value.name}"}-cpu-low"
+  alarm_name          = "${var.name}-cpu-low"
   comparison_operator = "LessThanOrEqualToThreshold"
   metric_name         = "CPUUtilization"
   namespace           = "AWS/ECS"
